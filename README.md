@@ -2,7 +2,8 @@
 ### About
 This is a cli app that taking some specific rows/columns from a csv file (utf-8 encode) to a plain text file, some columns need format or split_line.  
 I write both rust version and python version, and simply compare performance between them on WSL, rust version is only 3.5x faster than python version (3.10).  
-Could you help to improve ?
+Could you help to improve ?  
+As Github filesize limited, app_logs_fake.csv < 25MB, you can use: cat app_logs_fake.csv >> app_logs_fake.csv
 ### Example
 ```shell
 sss@Ubuntu2204:~$ ls -lh app_logs_fake.csv
