@@ -1,30 +1,45 @@
 
 ### About
 This is a cli app that taking some specific rows/columns from a csv file (utf-8 encode) to a plain text file, some columns need format or split_line.  
-I write both rust version and python version, and simply compare performance between them on WSL, rust version is only faster 70% than python version (3.10).
+I write both rust version and python version, and simply compare performance between them on WSL, rust version is only 3.5x faster than python version (3.10).  
+Could you help to improve ?
 ### Example
 ```shell
-sss@Ubuntu2204:~$
-sss@Ubuntu2204:~$ cat Desktop/cc/_log_k24f2r3e3.csv |wc -l
-1213626
-sss@Ubuntu2204:~$ time ./checklog Desktop/cc/_log_k24f2r3e3.csv
+sss@Ubuntu2204:~$ ls -lh app_logs_fake.csv
+-rwxrwxr-x 1 sss sss 171M Oct 23 13:35 app_logs_fake.csv
+sss@Ubuntu2204:~$ cat app_logs_fake.csv |wc -l
+2053713
+sss@Ubuntu2204:~$ time python checklog.py app_logs_fake.csv
  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 trying to process 1 csv files:
-    Desktop/cc/_log_k24f2r3e3.csv
+    app_logs_fake.csv
  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-csv file: Desktop/cc/_log_k24f2r3e3.csv
+csv file: app_logs_fake.csv
+AP3 csv logs format verify pass
+Output 3 logs:
+Log_name            Lines_count         Log_file_path
+sequence            47152               app_logs_fake-sequence.log
+CONSOLE_11          671537              app_logs_fake-CONSOLE_11.log
+SWITCH_01           10377               app_logs_fake-SWITCH_01.log
+
+real    0m3.221s
+user    0m1.188s
+sys     0m0.141s
+sss@Ubuntu2204:~$ time ./checklog app_logs_fake.csv
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+trying to process 1 csv files:
+    app_logs_fake.csv
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+csv file: app_logs_fake.csv
 BQ4 csv logs format verify pass
 Output 3 logs:
 Log_name            Lines_count         Log_file_path
-sequence            35364               Desktop/cc/_log_k24f2r3e3-sequence.log
-CONSOLE_11          503653              Desktop/cc/_log_k24f2r3e3-CONSOLE_11.log
-SWITCH_01           7783                Desktop/cc/_log_k24f2r3e3-SWITCH_01.log
+sequence            47152               app_logs_fake-sequence.log
+CONSOLE_11          671537              app_logs_fake-CONSOLE_11.log
+SWITCH_01           10377               app_logs_fake-SWITCH_01.log
 
-real    0m1.109s
-user    0m0.203s
-sys     0m0.188s
+real    0m0.864s
+user    0m0.219s
+sys     0m0.172s
 sss@Ubuntu2204:~$
 ```
-### Measure
-Could you help to improve ?
-![Alt text](perf095719-1.png)
