@@ -68,36 +68,56 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
     let mut line_string = String::new();
     while rdr.read_record(&mut line)? {
         let event_category = &line[event_category_ix];
-        if event_category == "seqlog" {
-            line_string.clear();
-            write!(&mut line_string, "{}", &line[timestamp_ix])?;
-            write!(&mut line_string, " {:<24}", &line[module_name_ix])?;
-            write!(&mut line_string, " line:{:<4}", &line[line_number_ix])?;
-            write!(&mut line_string, " {} ", &line[cell_key_ix])?;
-            let sp: Vec<&str> = line[step_key_ix].split("|").collect();
-            write!(&mut line_string, "{}", sp[sp.len() - 1])?;
-            write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
-            write!(&mut line_string, "{}\n", &line[event_message_ix])?;
-            seq_file.write_all(line_string.as_bytes())?;
-            if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
-        } else if event_category == "cesium-service" {
-            let _module_name = &line[module_name_ix];
-            let _module_name = if _module_name == "" { "cesiumlib" } else { _module_name };
-            line_string.clear();
-            write!(&mut line_string, "{}", &line[timestamp_ix])?;
-            write!(&mut line_string, " {_module_name:<24} ")?;
-            write!(&mut line_string, "line:{:<4}", &line[line_number_ix])?;
-            write!(&mut line_string, " {} ", &line[cell_key_ix])?;
-            let sp: Vec<&str> = line[step_key_ix].split("|").collect();
-            write!(&mut line_string, "{}", sp[sp.len() - 1])?;
-            write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
-            write!(&mut line_string, "{}\n", &line[response_ix])?;
-            seq_file.write_all(line_string.as_bytes())?;
-            if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
-        } else if event_category == "connection" {
-            let conn_name = &line[connection_name_ix];
-            if log_name_file_map.contains_key(conn_name) {
-                if let Some(_conn_file) = log_name_file_map.get_mut(conn_name) {
+        match event_category {
+            "seqlog" => {
+                line_string.clear();
+                write!(&mut line_string, "{}", &line[timestamp_ix])?;
+                write!(&mut line_string, " {:<24}", &line[module_name_ix])?;
+                write!(&mut line_string, " line:{:<4}", &line[line_number_ix])?;
+                write!(&mut line_string, " {} ", &line[cell_key_ix])?;
+                let sp: Vec<&str> = line[step_key_ix].split("|").collect();
+                write!(&mut line_string, "{}", sp[sp.len() - 1])?;
+                write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
+                write!(&mut line_string, "{}\n", &line[event_message_ix])?;
+                seq_file.write_all(line_string.as_bytes())?;
+                if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
+            }
+            "cesium-service" => {
+                let _module_name = &line[module_name_ix];
+                let _module_name = if _module_name == "" { "cesiumlib" } else { _module_name };
+                line_string.clear();
+                write!(&mut line_string, "{}", &line[timestamp_ix])?;
+                write!(&mut line_string, " {_module_name:<24} ")?;
+                write!(&mut line_string, "line:{:<4}", &line[line_number_ix])?;
+                write!(&mut line_string, " {} ", &line[cell_key_ix])?;
+                let sp: Vec<&str> = line[step_key_ix].split("|").collect();
+                write!(&mut line_string, "{}", sp[sp.len() - 1])?;
+                write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
+                write!(&mut line_string, "{}\n", &line[response_ix])?;
+                seq_file.write_all(line_string.as_bytes())?;
+                if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
+            }
+            "connection" => {
+                let conn_name = &line[connection_name_ix];
+                if log_name_file_map.contains_key(conn_name) {
+                    if let Some(_conn_file) = log_name_file_map.get_mut(conn_name) {
+                        line_string.clear();
+                        let timestamp = &line[timestamp_ix];
+                        let event_type = format!(" {:<9} ", &line[event_type_ix]);
+                        let event_msg = &line[event_message_ix];
+                        for s in event_msg.lines() {
+                            write!(&mut line_string, "{}", timestamp)?;
+                            write!(&mut line_string, "{}", event_type)?;
+                            write!(&mut line_string, "{}\n", s)?;
+                        }
+                        _conn_file.write_all(line_string.as_bytes())?;
+                        if let Some(x) = log_line_count.get_mut(conn_name) { *x = *x + 1; }
+                    }
+                } else {
+                    let _conn_file = format!("{}-{conn_name}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
+                    let _conn_file = File::create(_conn_file)?;
+                    let mut _conn_file = BufWriter::new(_conn_file);
+                    _conn_file.write_all("timestamp               event_type    event_message\n".as_bytes())?;
                     line_string.clear();
                     let timestamp = &line[timestamp_ix];
                     let event_type = format!(" {:<9} ", &line[event_type_ix]);
@@ -108,26 +128,11 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
                         write!(&mut line_string, "{}\n", s)?;
                     }
                     _conn_file.write_all(line_string.as_bytes())?;
-                    if let Some(x) = log_line_count.get_mut(conn_name) { *x = *x + 1; }
+                    log_name_file_map.insert(conn_name.to_string(), _conn_file);
+                    log_line_count.insert(conn_name.to_string(), 2);
                 }
-            } else {
-                let _conn_file = format!("{}-{conn_name}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
-                let _conn_file = File::create(_conn_file)?;
-                let mut _conn_file = BufWriter::new(_conn_file);
-                _conn_file.write_all("timestamp               event_type    event_message\n".as_bytes())?;
-                line_string.clear();
-                let timestamp = &line[timestamp_ix];
-                let event_type = format!(" {:<9} ", &line[event_type_ix]);
-                let event_msg = &line[event_message_ix];
-                for s in event_msg.lines() {
-                    write!(&mut line_string, "{}", timestamp)?;
-                    write!(&mut line_string, "{}", event_type)?;
-                    write!(&mut line_string, "{}\n", s)?;
-                }
-                _conn_file.write_all(line_string.as_bytes())?;
-                log_name_file_map.insert(conn_name.to_string(), _conn_file);
-                log_line_count.insert(conn_name.to_string(), 2);
             }
+            _ => {}
         }
     }
     seq_file.flush()?;
@@ -135,7 +140,7 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
         v.flush()?;
     }
     println!("Output {} logs:", log_line_count.len());
-    println!("{:<20}{:<20}{}", "Log_name", "Lines_count", "Log_file_path");
+    println!("{:<20}{:<20}Log_file_path", "Log_name", "Lines_count");
     for (k, v) in log_line_count.iter() {
         let _file_path = format!("{}-{k}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
         println!("{k:<20}{v:<20}{_file_path}");
@@ -177,7 +182,8 @@ fn get_csv_file(paths: Vec<&str>) -> Result<Vec<String>, Box<dyn Error>> {
             println!("Not exist    : {_x}");
         }
     }
-    let csv_files = csv_files.iter()
+    let csv_files = csv_files
+        .iter()
         .map(|x| x.clone().into_os_string().into_string().unwrap())
         .collect::<Vec<_>>();
     Ok(csv_files)
@@ -192,7 +198,8 @@ fn main() {
         .after_help("Examples: ./checklog.exe xxx.csv")
         .get_matches();
 
-    let filepath_or_folder = cli.get_many::<String>("filepath_or_folder")
+    let filepath_or_folder = cli
+        .get_many::<String>("filepath_or_folder")
         .unwrap_or_default()
         .map(|x| x.as_str())
         .collect::<Vec<_>>();
@@ -204,9 +211,8 @@ fn main() {
         println!("    {}", x);
     }
     for x in csv_files.iter() {
-        match csv2logs(x) {
-            Err(e) => eprintln!("fn csv2logs error: {e}"),
-            Ok(()) => (),
+        if let Err(e) = csv2logs(x) {
+            eprintln!("fn csv2logs error: {e}");
         }
     }
 }
