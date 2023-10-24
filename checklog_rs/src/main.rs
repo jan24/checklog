@@ -3,7 +3,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::io::{BufWriter, Write};
-use std::fmt::Write as _;
+use std::str;
 use csv;
 use clap::{Command, Arg, ArgAction};
 
@@ -64,72 +64,66 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
     log_line_count.insert(seq.clone(), 0);
     let seq_file = File::create(seq_file_path)?;
     let mut seq_file = BufWriter::new(seq_file);
-    let mut line = csv::StringRecord::new();
-    let mut line_string = String::new();
-    while rdr.read_record(&mut line)? {
+    let mut line = csv::ByteRecord::new();
+    while rdr.read_byte_record(&mut line)? {
         let event_category = &line[event_category_ix];
         match event_category {
-            "seqlog" => {
-                line_string.clear();
-                write!(&mut line_string, "{}", &line[timestamp_ix])?;
-                write!(&mut line_string, " {:<24}", &line[module_name_ix])?;
-                write!(&mut line_string, " line:{:<4}", &line[line_number_ix])?;
-                write!(&mut line_string, " {} ", &line[cell_key_ix])?;
-                let sp: Vec<&str> = line[step_key_ix].split("|").collect();
-                write!(&mut line_string, "{}", sp[sp.len() - 1])?;
-                write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
-                write!(&mut line_string, "{}\n", &line[event_message_ix])?;
-                seq_file.write_all(line_string.as_bytes())?;
+            b"seqlog" => {
+                seq_file.write_all(&line[timestamp_ix])?;
+                write!(&mut seq_file, " {:<24}", str::from_utf8(&line[module_name_ix]).unwrap())?;
+                write!(&mut seq_file, " line:{:<4} ", str::from_utf8(&line[line_number_ix]).unwrap())?;
+                seq_file.write_all(&line[cell_key_ix])?;
+                seq_file.write_all(b" ")?;
+                let step_key = &line[step_key_ix];
+                match step_key[..].iter().rposition(|&x| x == b"|"[0]) {
+                    Some(x) => seq_file.write_all(&step_key[x + 1..])?,
+                    None => seq_file.write_all(&step_key)?,
+                };
+                write!(&mut seq_file, " {:<8}: ", str::from_utf8(&line[level_name_ix]).unwrap())?;
+                seq_file.write_all(&line[event_message_ix])?;
+                seq_file.write_all(b"\n")?;
                 if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
             }
-            "cesium-service" => {
-                let _module_name = &line[module_name_ix];
-                let _module_name = if _module_name == "" { "cesiumlib" } else { _module_name };
-                line_string.clear();
-                write!(&mut line_string, "{}", &line[timestamp_ix])?;
-                write!(&mut line_string, " {_module_name:<24} ")?;
-                write!(&mut line_string, "line:{:<4}", &line[line_number_ix])?;
-                write!(&mut line_string, " {} ", &line[cell_key_ix])?;
-                let sp: Vec<&str> = line[step_key_ix].split("|").collect();
-                write!(&mut line_string, "{}", sp[sp.len() - 1])?;
-                write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
-                write!(&mut line_string, "{}\n", &line[response_ix])?;
-                seq_file.write_all(line_string.as_bytes())?;
+            b"cesium-service" => {
+                let _module_name = match line.get(module_name_ix) {
+                    Some(x) if !x[..].is_empty() => x,
+                    _ => b"cesiumlib",
+                };
+                seq_file.write_all(&line[timestamp_ix])?;
+                write!(&mut seq_file, " {:<24} ", str::from_utf8(_module_name).unwrap())?;
+                write!(&mut seq_file, "line:{:<4} ", str::from_utf8(&line[line_number_ix]).unwrap())?;
+                seq_file.write_all(&line[cell_key_ix])?;
+                seq_file.write_all(b" ")?;
+                let step_key = &line[step_key_ix];
+                match step_key[..].iter().rposition(|&x| x == b"|"[0]) {
+                    Some(x) => seq_file.write_all(&step_key[x + 1..])?,
+                    None => seq_file.write_all(&step_key)?,
+                };
+                write!(&mut seq_file, " {:<8}: ", str::from_utf8(&line[level_name_ix]).unwrap())?;
+                seq_file.write_all(&line[response_ix])?;
+                seq_file.write_all(b"\n")?;
                 if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
             }
-            "connection" => {
-                let conn_name = &line[connection_name_ix];
-                if log_name_file_map.contains_key(conn_name) {
-                    if let Some(_conn_file) = log_name_file_map.get_mut(conn_name) {
-                        line_string.clear();
-                        let timestamp = &line[timestamp_ix];
-                        let event_type = format!(" {:<9} ", &line[event_type_ix]);
-                        let event_msg = &line[event_message_ix];
-                        for s in event_msg.lines() {
-                            write!(&mut line_string, "{}", timestamp)?;
-                            write!(&mut line_string, "{}", event_type)?;
-                            write!(&mut line_string, "{}\n", s)?;
-                        }
-                        _conn_file.write_all(line_string.as_bytes())?;
-                        if let Some(x) = log_line_count.get_mut(conn_name) { *x = *x + 1; }
-                    }
-                } else {
+            b"connection" => {
+                let conn_name = str::from_utf8(&line[connection_name_ix]).unwrap();
+                if !log_name_file_map.contains_key(conn_name) {
                     let _conn_file = format!("{}-{conn_name}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
                     let _conn_file = File::create(_conn_file)?;
                     let mut _conn_file = BufWriter::new(_conn_file);
-                    _conn_file.write_all("timestamp               event_type    event_message\n".as_bytes())?;
-                    line_string.clear();
-                    let timestamp = &line[timestamp_ix];
-                    let event_type = format!(" {:<9} ", &line[event_type_ix]);
-                    let event_msg = &line[event_message_ix];
-                    for s in event_msg.lines() {
-                        write!(&mut line_string, "{}", timestamp)?;
-                        write!(&mut line_string, "{}", event_type)?;
-                        write!(&mut line_string, "{}\n", s)?;
-                    }
-                    _conn_file.write_all(line_string.as_bytes())?;
+                    _conn_file.write_all(b"timestamp               event_type    event_message\n")?;
                     log_name_file_map.insert(conn_name.to_string(), _conn_file);
                     log_line_count.insert(conn_name.to_string(), 2);
+                };
+                if let Some(_conn_file) = log_name_file_map.get_mut(conn_name) {
+                    let timestamp = &line[timestamp_ix];
+                    let event_type = format!(" {:<9} ", str::from_utf8(&line[event_type_ix]).unwrap());
+                    for msg in line[event_message_ix][..].split(|&x| x == b"\n"[0]) {
+                        _conn_file.write_all(timestamp)?;
+                        _conn_file.write_all(event_type.as_bytes())?;
+                        _conn_file.write_all(msg)?;
+                        _conn_file.write_all(b"\n")?;
+                    };
+                    if let Some(x) = log_line_count.get_mut(conn_name) { *x += 1; }
                 }
             }
             _ => {}
