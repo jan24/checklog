@@ -1,45 +1,37 @@
-use std::fs::File;
+use clap::{Arg, ArgAction, Command};
+use rustc_hash::FxHashMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use std::io::{BufWriter, Write};
 use std::fmt::Write as _;
-use csv;
-use clap::{Command, Arg, ArgAction};
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 
-
-const HEADER: [&str; 85] = ["timestamp", "datetime", "event_id", "alias", "answered_by_default", "cell_area",
-    "cell_key", "cell_product_id", "cell_serial_number", "cell_session_id", "check_response_code", "choices",
-    "connection_name", "container_name", "current_sequence", "default_answer", "enabled", "end_time",
-    "error_message", "event_category", "event_message", "event_type", "file_name", "function_name", "headers",
-    "host", "input_dict", "iteration_count", "iteration_id", "jump_on_branch", "jump_on_error", "key",
-    "level_name", "libname", "limit_def", "limit_id", "limit_type", "line_number", "machine_name", "measure_time",
-    "media_url", "module_name", "module_path", "multi_select", "name", "object_type", "parallel_steps",
-    "path_name", "port", "protocol", "question", "question_id", "regex", "response", "result_pass_fail",
-    "runtime_secs", "sequence_key", "serial_number", "session_id", "setup", "start_time", "status", "status_code",
-    "step_iteration", "step_key", "steps_completed", "stop_on_error", "system_log", "teardown", "test_area",
-    "test_cell", "test_container", "test_id", "test_record_time", "test_step_id", "test_unique_id",
-    "total_iteration_count", "traceback", "uid", "url", "user", "uuid", "uut_type", "value", "wildcard"];
-const REQUIRED_COLUMN: [&str; 11] = ["event_category", "event_type", "connection_name", "timestamp",
-    "module_name", "line_number", "cell_key", "step_key", "level_name", "event_message", "response"];
+const REQUIRED_COLUMN: [&str; 11] = [
+    "event_category",
+    "event_type",
+    "connection_name",
+    "timestamp",
+    "module_name",
+    "line_number",
+    "cell_key",
+    "step_key",
+    "level_name",
+    "event_message",
+    "response",
+];
 
 fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
-    println!(" - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
     println!("csv file: {csv_file_path}");
-    let _header = csv::StringRecord::from(Vec::from(HEADER));
 
     let file = File::open(csv_file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
     let header = rdr.headers()?;
-    if header != &_header {
-        eprintln!("Warning: BQ4 csv logs format verify fail, format update ?");
-    } else {
-        println!("BQ4 csv logs format verify pass");
-    }
     let z = header.iter().collect::<Vec<_>>();
     for x in REQUIRED_COLUMN {
         if !z.contains(&x) {
-            eprintln!("Error  : csv header not contain required column \"{x}\", Skip this csv file");
+            eprintln!(
+                "Error  : csv header not contain required column \"{x}\", Skip this csv file"
+            );
             return Ok(());
         }
     }
@@ -56,16 +48,16 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
     let event_message_ix = header.iter().position(|x| x == "event_message").unwrap();
     let response_ix = header.iter().position(|x| x == "response").unwrap();
 
-    let mut log_line_count: HashMap<String, i32> = HashMap::new();
-    let mut log_name_file_map: HashMap<String, BufWriter<File>> = HashMap::new();
+    let mut log_line_count: FxHashMap<String, i32> = FxHashMap::default();
+    let mut log_name_file_map: FxHashMap<String, BufWriter<File>> = FxHashMap::default();
 
     let seq = String::from("sequence");
-    let seq_file_path = format!("{}-{seq}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
     log_line_count.insert(seq.clone(), 0);
+    let seq_file_path = format!("{}-{seq}.log", &csv_file_path[..csv_file_path.len() - 4]);
     let seq_file = File::create(seq_file_path)?;
     let mut seq_file = BufWriter::new(seq_file);
-    let mut line = csv::StringRecord::new();
-    let mut line_string = String::new();
+    let mut line = csv::StringRecord::with_capacity(256, 85);
+    let mut line_string = String::with_capacity(256);
     while rdr.read_record(&mut line)? {
         let event_category = &line[event_category_ix];
         match event_category {
@@ -75,49 +67,50 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
                 write!(&mut line_string, " {:<24}", &line[module_name_ix])?;
                 write!(&mut line_string, " line:{:<4}", &line[line_number_ix])?;
                 write!(&mut line_string, " {} ", &line[cell_key_ix])?;
-                let sp: Vec<&str> = line[step_key_ix].split("|").collect();
+                let sp: Vec<&str> = line[step_key_ix].split('|').collect();
                 write!(&mut line_string, "{}", sp[sp.len() - 1])?;
                 write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
-                write!(&mut line_string, "{}\n", &line[event_message_ix])?;
+                writeln!(&mut line_string, "{}", &line[event_message_ix])?;
                 seq_file.write_all(line_string.as_bytes())?;
-                if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
+                if let Some(x) = log_line_count.get_mut(&seq) {
+                    *x += 1;
+                }
             }
             "cesium-service" => {
-                let _module_name = &line[module_name_ix];
-                let _module_name = if _module_name == "" { "cesiumlib" } else { _module_name };
+                let mut _module_name = &line[module_name_ix];
+                if _module_name.is_empty() {
+                    _module_name = "cesiumlib";
+                }
                 line_string.clear();
                 write!(&mut line_string, "{}", &line[timestamp_ix])?;
                 write!(&mut line_string, " {_module_name:<24} ")?;
                 write!(&mut line_string, "line:{:<4}", &line[line_number_ix])?;
                 write!(&mut line_string, " {} ", &line[cell_key_ix])?;
-                let sp: Vec<&str> = line[step_key_ix].split("|").collect();
+                let sp: Vec<&str> = line[step_key_ix].split('|').collect();
                 write!(&mut line_string, "{}", sp[sp.len() - 1])?;
                 write!(&mut line_string, " {:<8}: ", &line[level_name_ix])?;
-                write!(&mut line_string, "{}\n", &line[response_ix])?;
+                writeln!(&mut line_string, "{}", &line[response_ix])?;
                 seq_file.write_all(line_string.as_bytes())?;
-                if let Some(x) = log_line_count.get_mut(&seq) { *x = *x + 1; }
+                if let Some(x) = log_line_count.get_mut(&seq) {
+                    *x += 1;
+                }
             }
             "connection" => {
                 let conn_name = &line[connection_name_ix];
-                if log_name_file_map.contains_key(conn_name) {
-                    if let Some(_conn_file) = log_name_file_map.get_mut(conn_name) {
-                        line_string.clear();
-                        let timestamp = &line[timestamp_ix];
-                        let event_type = format!(" {:<9} ", &line[event_type_ix]);
-                        let event_msg = &line[event_message_ix];
-                        for s in event_msg.lines() {
-                            write!(&mut line_string, "{}", timestamp)?;
-                            write!(&mut line_string, "{}", event_type)?;
-                            write!(&mut line_string, "{}\n", s)?;
-                        }
-                        _conn_file.write_all(line_string.as_bytes())?;
-                        if let Some(x) = log_line_count.get_mut(conn_name) { *x = *x + 1; }
-                    }
-                } else {
-                    let _conn_file = format!("{}-{conn_name}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
+                if !log_name_file_map.contains_key(conn_name) {
+                    let _conn_file = format!(
+                        "{}-{conn_name}.log",
+                        &csv_file_path[..csv_file_path.len() - 4]
+                    );
                     let _conn_file = File::create(_conn_file)?;
                     let mut _conn_file = BufWriter::new(_conn_file);
-                    _conn_file.write_all("timestamp               event_type    event_message\n".as_bytes())?;
+                    _conn_file.write_all(
+                        "timestamp               event_type    event_message\n".as_bytes(),
+                    )?;
+                    log_name_file_map.insert(conn_name.to_string(), _conn_file);
+                    log_line_count.insert(conn_name.to_string(), 1);
+                };
+                if let Some(_conn_file) = log_name_file_map.get_mut(conn_name) {
                     line_string.clear();
                     let timestamp = &line[timestamp_ix];
                     let event_type = format!(" {:<9} ", &line[event_type_ix]);
@@ -125,11 +118,12 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
                     for s in event_msg.lines() {
                         write!(&mut line_string, "{}", timestamp)?;
                         write!(&mut line_string, "{}", event_type)?;
-                        write!(&mut line_string, "{}\n", s)?;
+                        writeln!(&mut line_string, "{}", s)?;
                     }
                     _conn_file.write_all(line_string.as_bytes())?;
-                    log_name_file_map.insert(conn_name.to_string(), _conn_file);
-                    log_line_count.insert(conn_name.to_string(), 2);
+                    if let Some(x) = log_line_count.get_mut(conn_name) {
+                        *x += 1;
+                    }
                 }
             }
             _ => {}
@@ -142,12 +136,11 @@ fn csv2logs(csv_file_path: &String) -> Result<(), Box<dyn Error>> {
     println!("Output {} logs:", log_line_count.len());
     println!("{:<20}{:<20}Log_file_path", "Log_name", "Lines_count");
     for (k, v) in log_line_count.iter() {
-        let _file_path = format!("{}-{k}.log", csv_file_path[..csv_file_path.len() - 4].to_string());
+        let _file_path = format!("{}-{k}.log", &csv_file_path[..csv_file_path.len() - 4]);
         println!("{k:<20}{v:<20}{_file_path}");
     }
     Ok(())
 }
-
 
 fn get_csv_file(paths: Vec<&str>) -> Result<Vec<String>, Box<dyn Error>> {
     let mut csv_files: Vec<PathBuf> = vec![];
@@ -189,12 +182,15 @@ fn get_csv_file(paths: Vec<&str>) -> Result<Vec<String>, Box<dyn Error>> {
     Ok(csv_files)
 }
 
-
 fn main() {
     let cli = Command::new("MyApp")
         .version("1.0")
         .about("Convent BQ4 Dftium .csv logs to BQ3 style logs")
-        .arg(Arg::new("filepath_or_folder").action(ArgAction::Append).required(true))
+        .arg(
+            Arg::new("filepath_or_folder")
+                .action(ArgAction::Append)
+                .required(true),
+        )
         .after_help("Examples: ./checklog.exe xxx.csv")
         .get_matches();
 
@@ -211,6 +207,9 @@ fn main() {
         println!("    {}", x);
     }
     for x in csv_files.iter() {
+        println!(
+            " - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+        );
         if let Err(e) = csv2logs(x) {
             eprintln!("fn csv2logs error: {e}");
         }
