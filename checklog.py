@@ -5,21 +5,11 @@ import csv
 import argparse
 from pathlib import Path
 
-HEADER = ['timestamp', 'datetime', 'event_id', 'alias', 'answered_by_default', 'cell_area', 'cell_key',
-          'cell_product_id', 'cell_serial_number', 'cell_session_id', 'check_response_code', 'choices',
-          'connection_name', 'container_name', 'current_sequence', 'default_answer', 'enabled', 'end_time',
-          'error_message', 'event_category', 'event_message', 'event_type', 'file_name', 'function_name', 'headers',
-          'host', 'input_dict', 'iteration_count', 'iteration_id', 'jump_on_branch', 'jump_on_error', 'key',
-          'level_name', 'libname', 'limit_def', 'limit_id', 'limit_type', 'line_number', 'machine_name', 'measure_time',
-          'media_url', 'module_name', 'module_path', 'multi_select', 'name', 'object_type', 'parallel_steps',
-          'path_name', 'port', 'protocol', 'question', 'question_id', 'regex', 'response', 'result_pass_fail',
-          'runtime_secs', 'sequence_key', 'serial_number', 'session_id', 'setup', 'start_time', 'status', 'status_code',
-          'step_iteration', 'step_key', 'steps_completed', 'stop_on_error', 'system_log', 'teardown', 'test_area',
-          'test_cell', 'test_container', 'test_id', 'test_record_time', 'test_step_id', 'test_unique_id',
-          'total_iteration_count', 'traceback', 'uid', 'url', 'user', 'uuid', 'uut_type', 'value', 'wildcard']
 
 REQUIRED_COLUMN = ["event_category", "event_type", "connection_name", "timestamp",
     "module_name", "line_number", "cell_key", "step_key", "level_name", "event_message", "response"]
+
+
 def sp_event_msg(timestamp: str, event_type: str, event_message: str):
     """
     event_message may contains \r\n
@@ -58,10 +48,6 @@ def csv2logs(csv_full_path: str | Path):
     with open(csv_full_path, "r", encoding="utf-8") as f:
         csv_reader = csv.reader(f)
         header = next(csv_reader)
-        if header != HEADER:
-            print("Warning: BQ4 csv logs format verify fail, format update ?")
-        else:
-            print("BQ4 csv logs format verify pass")
         for x in REQUIRED_COLUMN:
             if x not in header:
                 print(f"Error  : csv header not contain required column \"{x}\", Skip this csv file")

@@ -4,6 +4,10 @@ This is a cli app that taking some specific rows/columns from a csv file (utf-8 
 I write both rust version and python version, and simply compare performance between them on WSL, rust version is only 3.5x faster than python version (3.10).  
 Could you help to improve ?  
 As Github filesize limited, app_logs_fake.csv < 25MB, you can use: cat app_logs_fake.csv >> app_logs_fake.csv
+Update: 1, try use ByteRecord, but it didn't improve much, I think maybe there are too many format!.
+2, try multi thread, no improve much, even wrose when csv file is large size, I think the copy of csv reader cause this.
+Thanks for @BurntSushi's help!
+
 ### Example
 ```shell
 sss@Ubuntu2204:~$ ls -lh app_logs_fake.csv
